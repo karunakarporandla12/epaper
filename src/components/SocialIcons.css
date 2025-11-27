@@ -1,0 +1,32 @@
+
+/* ===========================
+   SOCIAL ICONS (reusable)
+   =========================== */
+.social-icons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.social-icons button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.06s ease;
+}
+.social-icons button:hover {
+  border-color: #f59e0b;
+  transform: translateY(-1px);
+}
+
+/* Specific color hints (icons come from react-icons) */
+.social-icons button:nth-child(1) { color: #1877f2; } /* Facebook */
+.social-icons button:nth-child(2) { color: #1d9bf0; } /* Twitter/X */
+.social-icons button:nth-child(3) { color: #25d366; } /* WhatsApp */

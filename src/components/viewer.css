@@ -1,0 +1,12 @@
+
+.crop-toolbar {
+  position: absolute;
+  display: flex;
+  gap: 8px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.crop-toolbar .share-btn { background: #1677ff; color: #fff; border: none; padding: 6px 10px; }
+.crop-toolbar .cancel-btn { background: #999; color: #fff; border: none; padding: 6px 10px; }

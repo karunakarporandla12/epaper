@@ -1,0 +1,27 @@
+
+/* ===========================
+   FOOTER BAR
+   =========================== */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: #111827;
+  border-top: 1px solid #374151;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+.footer > span {
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* Ensure footer content wraps gracefully on smaller screens */
+@media (max-width: 560px) {
+  .footer {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
