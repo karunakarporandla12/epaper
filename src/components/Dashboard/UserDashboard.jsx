@@ -10,14 +10,12 @@ import DashboardLayout from './DashboardLayout';
 
 function UserDashboard() {
   const { currentUser } = useAuth();
-  //  const [activePage, setActivePage] = useState('dashboard'); // Default page
-
   return (
     <div className="dashboard-layout">
            
       <div className="main-content">
         <h2>Welcome11, {currentUser?.displayName || currentUser?.email}</h2>
-        <button onClick={() => signOut(auth)}>Logout</button>
+        {/* <button onClick={() => signOut(auth)}>Logout</button> */}
       </div>
     </div>
   );
