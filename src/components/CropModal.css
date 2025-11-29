@@ -155,3 +155,22 @@
   cursor: pointer;
 }
 .download-btn:hover { filter: brightness(0.95); }
+
+/* new css */
+
+.share-icon {
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  text-decoration: none;
+}
+
+.share-icon:hover {
+  opacity: 0.7;
+}
+
+.whatsapp { color: #25D366; }
+.facebook { color: #1877F2; }
+.twitter { color: #000000; }
+.telegram { color: #0088cc; }
+

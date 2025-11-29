@@ -1,413 +1,507 @@
-import React, { useState, useRef, useCallback } from 'react';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.entry';
-import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
-import CropModal from './CropModal';
+import React, { useState, useEffect, useRef } from "react";
+import { getStorage, ref as storageRef, listAll, getDownloadURL } from "firebase/storage";
+import { getAuth } from "firebase/auth";
+import * as pdfjsLib from "pdfjs-dist/build/pdf";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
+import ReactCrop from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
+import CropModal from "./CropModal";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-const ASPECT_OPTIONS = [
-  { label: 'Freeform', value: 'free' },
-  { label: '1 : 1', value: 1 },
-  { label: '4 : 3', value: 4 / 3 },
-  { label: '16 : 9', value: 16 / 9 },
-  { label: 'Custom', value: 'custom' },
-];
+const PdfImageViewer = () => {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  const storage = getStorage();
 
-// Convert dataURL to File (needed for Web Share files)
-function dataURLtoFile(dataurl, filename) {
-  const arr = dataurl.split(',');
-  const mime = arr[0].match(/:(.*?);/)[1];
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new File([u8arr], filename, { type: mime });
-}
-
-export const PdfImageViewer = () => {
-  const [images, setImages] = useState([]);
+  const [allFiles, setAllFiles] = useState([]); // { name, url, ext, dateStr }
+  const [filteredFiles, setFilteredFiles] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null); // file object from filteredFiles
+  const [pageImages, setPageImages] = useState([]); // dataURLs for pages or image url single
   const [currentPage, setCurrentPage] = useState(0);
-  const [loading, setLoading] = useState(false);
 
+  const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Crop states
   const [isCropping, setIsCropping] = useState(false);
-  const [crop, setCrop] = useState();
+  const [crop, setCrop] = useState(null);
   const [pixelCrop, setPixelCrop] = useState(null);
   const imgRef = useRef(null);
+  const [croppedDataUrl, setCroppedDataUrl] = useState(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const [aspectMode, setAspectMode] = useState('free');
-  const [customA, setCustomA] = useState(3);
-  const [customB, setCustomB] = useState(2);
+  // pagination controls UI (numbers)
+  const totalPages = pageImages.length;
 
-  const [croppedImage, setCroppedImage] = useState(null);
-  const [title, setTitle] = useState('');
-
-  // Load PDF → pages → dataURLs
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file || file.type !== 'application/pdf') return;
-
-    setLoading(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const typedArray = new Uint8Array(reader.result);
-      const pdf = await pdfjsLib.getDocument(typedArray).promise;
-      const imageUrls = [];
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1.5 });
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: context, viewport }).promise;
-        imageUrls.push(canvas.toDataURL('image/png'));
+  // Fetch list on mount (if user exists)
+  useEffect(() => {
+    if (!user) return;
+    const folder = storageRef(storage, `editions/${user.uid}`);
+    (async () => {
+      try {
+        const res = await listAll(folder);
+        const mapped = await Promise.all(
+          res.items.map(async (it) => {
+            const url = await getDownloadURL(it);
+            const name = it.name;
+            const ext = name.split(".").pop().toLowerCase();
+            const dateStr = extractDateFromName(name); // yyyy-mm-dd or null
+            return { name, url, ext, dateStr };
+          })
+        );
+        // sort newest first by name timestamp (if present)
+        mapped.sort((a, b) => {
+          const ta = extractTsFromName(a.name) || 0;
+          const tb = extractTsFromName(b.name) || 0;
+          return tb - ta;
+        });
+        setAllFiles(mapped);
+      } catch (err) {
+        console.error("listAll error", err);
       }
+    })();
+  }, [user, storage]);
 
-      setImages(imageUrls);
-      setCurrentPage(0);
-      setLoading(false);
-
-      // Reset crop state
-      setIsCropping(false);
-      setCrop(undefined);
-      setPixelCrop(null);
-      setCroppedImage(null);
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  // Create an initial crop based on aspect
-  const applyAspect = useCallback((imgEl, aspect) => {
-    if (!imgEl || !aspect || aspect === 'free') {
-      setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 60 });
+  // Apply filter when allFiles or selectedDate changes
+  useEffect(() => {
+    if (!allFiles || allFiles.length === 0) {
+      setFilteredFiles([]);
+      setSelectedFile(null);
+      setPageImages([]);
       return;
     }
-    const imgW = imgEl.naturalWidth;
-    const imgH = imgEl.naturalHeight;
-    const make = makeAspectCrop({ unit: '%', width: 80 }, Number(aspect), imgW, imgH);
-    const centered = centerCrop(make, imgW, imgH);
-    setCrop(centered);
-  }, []);
+    const filtered = allFiles.filter((f) => f.dateStr === selectedDate);
+    setFilteredFiles(filtered);
+    if (filtered.length > 0) {
+      // auto-select first (most recent by sort above)
+      selectFile(filtered[0]);
+    } else {
+      // clear viewer
+      setSelectedFile(null);
+      setPageImages([]);
+      setCurrentPage(0);
+    }
+  }, [allFiles, selectedDate]);
 
-  const onImageLoaded = useCallback((img) => {
-    imgRef.current = img; // Do NOT apply crop automatically
-  }, []);
+  // Helpers to parse name: expects a numeric timestamp somewhere like -1764406528686.pdf
+  function extractTsFromName(name) {
+    const m = name.match(/-(\d{10,})\./);
+    if (!m) return null;
+    const ts = parseInt(m[1], 10);
+    // if timestamp seems in seconds (10 digits), convert to ms
+    return ts < 1e12 ? ts * 1000 : ts;
+  }
+  function extractDateFromName(name) {
+    const ts = extractTsFromName(name);
+    if (!ts) return null;
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10); // yyyy-mm-dd
+  }
 
-  const onCropChange = useCallback((nextPixelCrop, nextPercentCrop) => {
-    setCrop(nextPercentCrop);
-    setPixelCrop(nextPixelCrop);
-  }, []);
-
-  const onAspectModeChange = (val) => {
-    setAspectMode(val);
-    if (isCropping && imgRef.current) {
-      applyAspect(imgRef.current, val === 'custom' ? customA / customB : val);
+  const selectFile = async (fileObj) => {
+    if (!fileObj) return;
+    setSelectedFile(fileObj);
+    setLoading(true);
+    setPageImages([]);
+    setCurrentPage(0);
+    try {
+      if (fileObj.ext === "pdf") {
+        // pdfjs can accept url directly
+        const pdf = await pdfjsLib.getDocument(fileObj.url).promise;
+        const imgs = [];
+        // render pages sequentially (could optimize)
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1.5 });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d");
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          imgs.push(canvas.toDataURL("image/png"));
+        }
+        setPageImages(imgs);
+      } else {
+        // image
+        setPageImages([fileObj.url]);
+      }
+    } catch (err) {
+      console.error("render error", err);
+      setPageImages([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // -- Cropping utils --
+  // Crop helpers
+  const onImageLoaded = (img) => {
+    imgRef.current = img;
+  };
+  const onCropChange = (nextPixelCrop, nextPercentCrop) => {
+    // react-image-crop's onChange signature varies; here we capture percent crop in crop, pixel in pixelCrop
+    setCrop(nextPercentCrop || nextPixelCrop);
+    setPixelCrop(nextPixelCrop || null);
+  };
+
   const getCroppedDataUrl = () => {
     if (!pixelCrop || !imgRef.current) return null;
-
     const img = imgRef.current;
     const scaleX = img.naturalWidth / img.width;
     const scaleY = img.naturalHeight / img.height;
     const pixelRatio = window.devicePixelRatio || 1;
 
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = Math.round(pixelCrop.width * scaleX * pixelRatio);
     canvas.height = Math.round(pixelCrop.height * scaleY * pixelRatio);
-    const ctx = canvas.getContext('2d');
-
+    const ctx = canvas.getContext("2d");
     ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = "high";
     ctx.drawImage(
       img,
       pixelCrop.x * scaleX,
       pixelCrop.y * scaleY,
       pixelCrop.width * scaleX,
       pixelCrop.height * scaleY,
-      0, 0,
+      0,
+      0,
       pixelCrop.width * scaleX,
       pixelCrop.height * scaleY
     );
-
-    return canvas.toDataURL('image/png');
+    return canvas.toDataURL("image/png");
   };
 
-  const getCroppedImage = () => {
-    const dataUrl = getCroppedDataUrl();
-    if (!dataUrl) {
-      alert('Please select a crop area first!');
+  const handleSaveCrop = () => {
+    const d = getCroppedDataUrl();
+    if (!d) {
+      alert("Please select a crop area first.");
       return;
     }
-    setCroppedImage(dataUrl); // Opens the modal
-  };
-
-  const shareCroppedSelection = async () => {
-    const dataUrl = getCroppedDataUrl();
-    if (!dataUrl) {
-      alert('Please select a crop area first!');
-      return;
-    }
-
-    try {
-      if (navigator.share && navigator.canShare) {
-        const file = dataURLtoFile(dataUrl, 'cropped.png');
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: 'Cropped Image',
-            text: 'Here is the cropped selection.',
-            files: [file],
-          });
-          return;
-        }
-      }
-      // Fallback: trigger download
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'cropped.png';
-      a.click();
-    } catch (err) {
-      console.error('Share failed:', err);
-      alert('Sharing failed. The image will be downloaded instead.');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'cropped.png';
-      a.click();
-    }
-  };
-
-  const goPrev = () => setCurrentPage((p) => Math.max(p - 1, 0));
-  const goNext = () => setCurrentPage((p) => Math.min(p + 1, images.length - 1));
-
-  // Buttons INSIDE selection (this is what makes them stick and move)
-  const renderSelectionAddon = () => {
-    return (
-      <div
-        style={{
-          position: 'absolute',
-          left: 8,
-          top: -50,
-          display: 'flex',
-          gap: 8,
-          padding: '6px 8px',
-          background: 'rgba(0,0,0,0.5)',
-          borderRadius: 6,
-          color: '#fff',
-          alignItems: 'center',
-          zIndex: 2,
-        }}
-        // Ensure addon receives pointer events
-        className="crop-selection-toolbar"
-      >
-        <button
-          // onClick={getCroppedImage}
-          
-
-  onClick={() => {
-    // First perform share logic
-    getCroppedImage();
-
-    // Then cancel crop selection
+    setCroppedDataUrl(d);
     setIsCropping(false);
-    setCrop(undefined);
+    setCrop(null);
     setPixelCrop(null);
-  }}
+  };
 
-          
+  // Download full original PDF file
+  const handleDownloadPdf = async () => {
+    if (!selectedFile || selectedFile.ext !== "pdf") return;
+    try {
+      const res = await fetch(selectedFile.url);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = selectedFile.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      console.error("download error", err);
+      alert("Failed to download PDF.");
+    }
+  };
 
+  // Page selector dropdown options
+  const pageSelectOptions = pageImages.map((_, i) => `Page ${i + 1}`);
 
-          disabled={!pixelCrop}
-          style={{
-            background: '#1677ff',
-            color: '#fff',
-            border: 'none',
-            padding: '6px 10px',
-            borderRadius: 4,
-            cursor: pixelCrop ? 'pointer' : 'not-allowed',
-          }}
-        >
-          
-<svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          fill="white"
-          viewBox="0 0 24 24"
-        >
-          <path fill="#fff" fill-rule="nonzero" d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a2.5 2.5 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 14 5a2.99 2.99 0 0 0 1.96.77l-7.05 4.11a2.5 2.5 0 0 0 0 1.39l7.05 4.11c.52-.47 1.2-.77 1.96-.77a3 3 0 1 0 0-6c-.76 0-1.44.3-1.96.77l-7.05-4.11a2.99 2.99 0 1 0-1.96 5.23c.76 0 1.44-.3 1.96-.77l7.05 4.11c.52-.47 1.2-.77 1.96-.77a3 3 0 1 0 0 6z"/>
-          {/* <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a2.5 2.5 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 14 5a2.99 2.99 0 0 0 1.96.77l-7.05 4.11a2.5 2.5 0 0 0 0 1.39l7.05 4.11c.52-.47 1.2-.77 1.96-.77a3 3 0 1 0 0-6c-.76 0-1.44.3-1.96.77l-7.05-4.11a2.99 2.99 0 1 0-1.96 5.23c.76 0 1.44-.3 1.96-.77l7.05 4.11c.52-.47 1.2-.77 1.96-.77a3 3 0 1 0 0 6z"/> */}
-        </svg>
-
-
-          Share
-        </button>
+  // Top pagination number buttons (like screenshot)
+  const renderPageNumbers = () => {
+    if (totalPages <= 1) return null;
+    const items = [];
+    const maxVisible = 5;
+    // simple windowing
+    let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages - 1, start + maxVisible - 1);
+    if (end - start < maxVisible - 1) {
+      start = Math.max(0, end - (maxVisible - 1));
+    }
+    for (let i = start; i <= end; i++) {
+      items.push(
         <button
-          onClick={() => {
-            setIsCropping(false);
-            setCrop(undefined);
-            setPixelCrop(null);
-          }}
-          style={{
-            background: '#f44336',
-            color: '#fff',
-            border: 'none',
-            padding: '6px 10px',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
+          key={i}
+          className={`btn btn-sm me-1 ${i === currentPage ? "btn-primary" : "btn-outline-primary"}`}
+          onClick={() => setCurrentPage(i)}
         >
-          Cancel
+          {i + 1}
         </button>
-        {/* <button
-          onClick={shareCroppedSelection}
-          disabled={!pixelCrop}
-          style={{
-            background: '#00b894',
-            color: '#fff',
-            border: 'none',
-            padding: '6px 10px',
-            borderRadius: 4,
-            cursor: pixelCrop ? 'pointer' : 'not-allowed',
-          }}
-          title="Share cropped selection"
-        >
-          Share
-        </button> */}
+      );
+    }
+    // forward/back double
+    return (
+      <div className="d-inline-flex align-items-center">
+        {items}
+        {currentPage < totalPages - 1 && (
+          <button className="btn btn-sm btn-outline-primary" onClick={() => setCurrentPage(totalPages - 1)}>
+            ▸▸
+          </button>
+        )}
       </div>
     );
   };
 
   return (
-    <div className="pdf-viewer-container" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <h2>PDF → Image Viewer (Crop with Floating Actions)</h2>
+    <div className="container-fluid">
+      <div className="card shadow-sm my-2">
+        <div className="card-body">
+          {/* TOP TOOLBAR */}
+          {/* <div className="d-flex align-items-center gap-2 mb-3"> */}
+          <div className="d-flex align-items-center gap-2 mb-3" id="top-toolbar">
 
-      {/* Top controls: file + paging */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input type="file" accept="application/pdf" onChange={handleFileChange} />
-        {images.length > 0 && (
-          <>
-            <button className='btn btn-primary' onClick={goPrev} disabled={currentPage === 0}>◀ Prev</button>
-            <button className='btn btn-primary' onClick={goNext} disabled={currentPage === images.length - 1}>Next ▶</button>
-            <span>Page {currentPage + 1} / {images.length}</span>
-          </>
-        )}
-
-         <button
-                className="crop-btn btn btn-warning"
-                onClick={() => {
-                  setIsCropping((prev) => {
-                    const next = !prev;
-                    if (next && imgRef.current) {
-                      applyAspect(imgRef.current, aspectMode === 'custom' ? customA / customB : aspectMode);
-                    } else {
-                      setCrop(undefined);
-                      setPixelCrop(null);
-                    }
-                    return next;
-                  });
-                }}
-                title={isCropping ? 'Cancel' : 'Crop'}
-                style={{ marginLeft: 'auto' }}
+            {/* Page select dropdown */}
+            <div>
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 140 }}
+                value={currentPage}
+                onChange={(e) => setCurrentPage(Number(e.target.value))}
               >
-                ✂️ {isCropping ? 'Cancel' : 'Crop'}
-              </button>
+                {pageSelectOptions.map((label, i) => (
+                  <option key={i} value={i}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
+            {/* Page numbers */}
+            <div className="ms-2">{renderPageNumbers()}</div>
 
-      </div>
+            {/* PDF download button */}
+            <button
+              className="btn btn-warning btn-sm ms-3"
+              onClick={handleDownloadPdf}
+              disabled={!selectedFile || selectedFile.ext !== "pdf"}
+              title="Download full PDF"
+            >
+              <strong>PDF</strong>
+            </button>
 
-      {loading && <div>Rendering PDF pages…</div>}
-
-      {!loading && images.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
-          {/* Thumbnails */}
-          <aside style={{ overflowY: 'auto', maxHeight: 480, borderRight: '1px solid #ddd' }}>
-            {images.map((src, i) => (
-              <div
-                key={i}
-                onClick={() => setCurrentPage(i)}
-                style={{
-                  padding: 8,
-                  cursor: 'pointer',
-                  background: currentPage === i ? '#eef6ff' : 'transparent',
-                  borderLeft: currentPage === i ? '3px solid #1677ff' : '3px solid transparent'
-                }}
-              >
-                <img src={src} alt={`Page ${i + 1}`} style={{ width: '100%', display: 'block' }} />
-                <small>Page {i + 1}</small>
-              </div>
-            ))}
-          </aside>
-
-          {/* Main */}
-          <main>
-            {/* Aspect + Crop toggle row */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
            
 
-              {/* Crop toggle */}
-              {/* <button
-                className="crop-btn"
-                onClick={() => {
-                  setIsCropping((prev) => {
-                    const next = !prev;
-                    if (next && imgRef.current) {
-                      applyAspect(imgRef.current, aspectMode === 'custom' ? customA / customB : aspectMode);
-                    } else {
-                      setCrop(undefined);
-                      setPixelCrop(null);
-                    }
-                    return next;
-                  });
-                }}
-                title={isCropping ? 'Cancel' : 'Crop'}
-                style={{ marginLeft: 'auto' }}
-              >
-                ✂️ {isCropping ? 'Cancel' : 'Crop'}
-              </button> */}
-            </div>
+            {/* Archive calendar toggle (right aligned) */}
+            <div className="ms-auto position-relative">
+               {/* Crop button */}
+            <button
+              className="btn btn-secondary btn-sm ms-2 mr-2"
+              onClick={() => {
+                setIsCropping((p) => !p);
+                // reset crop state when toggling on
+                setTimeout(() => {
+                  setCrop(null);
+                  setPixelCrop(null);
+                }, 0);
+              }}
+              title="Crop selection"
+            >
+              <i className="bi bi-scissors me-1" /> Clip
+            </button>
 
-            {/* Image + crop (selection addon renders here) */}
-            <div style={{ border: '1px solid #ddd', padding: 8, position: 'relative' }}>
-              {isCropping ? (
-                <ReactCrop
-                  crop={crop}
-                  onChange={onCropChange}
-                  renderSelectionAddon={renderSelectionAddon}
+
+              <button
+                className="btn btn-primary btn-sm ms-2"
+                onClick={() => setCalendarOpen((v) => !v)}
+                title="Open archive calendar"
+              >
+                <i className="bi bi-calendar3 me-1" /> Archive
+              </button>
+
+              {calendarOpen && (
+                <div
+                  className="card position-absolute"
+                  style={{ right: 0, top: "42px", zIndex: 1200, minWidth: 240, padding: 10 }}
                 >
-                  <img
-                    src={images[currentPage]}
-                    alt={`Page ${currentPage + 1}`}
-                    onLoad={(e) => onImageLoaded(e.currentTarget)}
-                  />
-                </ReactCrop>
-              ) : (
-                <img
-                  src={images[currentPage]}
-                  alt={`Page ${currentPage + 1}`}
-                  onLoad={(e) => onImageLoaded(e.currentTarget)}
-                  style={{ maxWidth: '100%' }}
-                />
+                  <div className="mb-2">
+                    {/* <label className="form-label mb-1">Pick date</label> */}
+                    <input
+                      type="date"
+                      className="form-control form-control-sm"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="d-flex justify-content-between">
+                    <button
+                      className="btn btn-sm btn-outline-secondary"
+                      onClick={() => {
+                        setSelectedDate(new Date().toISOString().slice(0, 10));
+                      }}
+                    >
+                      Today
+                    </button>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => setCalendarOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-          </main>
-        </div>
-      )}
+          </div>
 
-      {/* Modal shows the resulting cropped image */}
-      {croppedImage && (
-        <CropModal
-          image={croppedImage}
-          title={title}
-          setTitle={setTitle}
-          onClose={() => setCroppedImage(null)}
-        />
-      )}
+          {/* MAIN LAYOUT: left thumbnails | right viewer */}
+          <div className="row">
+            {/* Left thumbnails (pages list) */}
+            {/* <div className="col-3" style={{ maxHeight: "65vh", overflowY: "auto", borderRight: "1px solid #eee" }}> */}
+            <div id="left-section-pages" className="col-3 hide-mobile" style={{ maxHeight: "65vh", overflowY: "auto", borderRight: "1px solid #eee" }}>
+
+            
+              {/* Page thumbnails (when a file selected) */}
+              <div>
+                {/* <h6 className="mb-2">Pages</h6> */}
+                {loading && <div>Rendering pages…</div>}
+                {!loading && pageImages.length === 0 && selectedFile && (
+                  <div className="text-muted">No pages to show</div>
+                )}
+                {!loading &&
+                  pageImages.map((src, i) => (
+                    <div
+                      key={i}
+                      className={`mb-2 p-1 ${i === currentPage ? "border border-primary" : "border border-light"}`}
+                      style={{ cursor: "pointer", background: "#fff" }}
+                      onClick={() => setCurrentPage(i)}
+                    >
+                      <img src={src} alt={`thumb-${i}`} style={{ width: "100%", display: "block" }} />
+                      <small>Page {i + 1}</small>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Right viewer */}
+            <div className="col-9" style={{ maxHeight: "75vh", overflow: "auto" }}>
+              {/* eaper title and date and page number */}
+
+              {/* <div className="d-flex align-items-center justify-content-between mb-2 bg bg-primary p-2 rounded-2 w-50">
+                <div>
+                  <small className="text-muted">
+                    {selectedFile ? selectedFile.name : "No file selected"}
+                  </small>
+                </div>
+
+                <div>
+                  <span className="me-2">Page {pageImages.length ? currentPage + 1 : 0} / {pageImages.length}</span>
+                </div>
+              </div> */}
+
+              <div className="border" style={{ minHeight: 400, padding: 10, background: "#fafafa" }}>
+                 <div className="d-flex align-items-center justify-content-between bg bg-primary p-2 rounded-2 w-50">
+                <div>
+                  <small className="text-muted">
+                    {selectedFile ? selectedFile.name : "No file selected"}
+                  </small>
+                </div>
+
+                <div>
+                  <span className="me-2">Page {pageImages.length ? currentPage + 1 : 0} / {pageImages.length}</span>
+                </div>
+              </div>
+                {filteredFiles.length === 0 && (
+                  <div className="d-flex align-items-center justify-content-center" style={{ height: 300 }}>
+                    <div className="text-center text-muted">
+                      <h5>No data available</h5>
+                      <div>Select another date or upload files for this date.</div>
+                    </div>
+                  </div>
+                )}
+
+                {filteredFiles.length > 0 && loading && (
+                  <div className="d-flex align-items-center justify-content-center" style={{ height: 300 }}>
+                    Rendering pages…
+                  </div>
+                )}
+
+                {filteredFiles.length > 0 && !loading && pageImages.length > 0 && (
+                  <div style={{ position: "relative" }}>
+                    {isCropping ? (
+                      <ReactCrop
+                        crop={crop}
+                        onChange={onCropChange}
+                        onComplete={onCropChange}
+                        renderSelectionAddon={() => (
+                          <div style={{ position: "absolute", left: 0, top: -35, zIndex: 9999 }}>
+                            <button className="btn btn-success btn-sm me-1" onClick={handleSaveCrop}>
+                              Save
+                            </button>
+                            <button
+                              className="btn btn-danger btn-sm"
+                              onClick={() => {
+                                setIsCropping(false);
+                                setCrop(null);
+                                setPixelCrop(null);
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      >
+                        <img
+                          src={pageImages[currentPage]}
+                          alt="page"
+                          onLoad={(e) => onImageLoaded(e.currentTarget)}
+                          style={{ width: "100%", display: "block" }}
+                        />
+                      {/* </ReactCrop>
+                    ) : (
+                      <img
+                        src={pageImages[currentPage]}
+                        alt="page"
+                        style={{ width: "100%", display: "block" }}
+                        onLoad={(e) => onImageLoaded(e.currentTarget)}
+                      />
+                    )} */}
+                    </ReactCrop>
+) : (
+  <img
+    src={pageImages[currentPage]}
+    alt="page"
+    style={{ width: "100%", display: "block" }}
+    onLoad={(e) => onImageLoaded(e.currentTarget)}
+  />
+)}
+
+{/* Mobile Arrows */}
+{pageImages.length > 1 && (
+  <>
+    <button
+      className="mobile-arrow left d-md-none"
+      onClick={() => currentPage > 0 && setCurrentPage(currentPage - 1)}
+    >
+      ‹
+    </button>
+
+    <button
+      className="mobile-arrow right d-md-none"
+      onClick={() => currentPage < pageImages.length - 1 && setCurrentPage(currentPage + 1)}
+    >
+      ›
+    </button>
+  </>
+)}
+
+
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cropped result modal */}
+          {croppedDataUrl && (
+            <CropModal
+              image={croppedDataUrl}
+              title={selectedFile ? selectedFile.name.replace(/\.[^.]+$/, "") + "-crop" : "crop"}
+              onClose={() => setCroppedDataUrl(null)}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
-}
+};
+
 export default PdfImageViewer;

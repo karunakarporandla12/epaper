@@ -206,3 +206,29 @@
   }
 }
 
+@media (max-width: 678px) {
+  /* Hide left thumbnails section */
+  .left-thumbnails-col {
+    display: none !important;
+  }
+  #left-section-pages{
+    display: none !important;
+  }
+  .card-body #top-toolbar{
+    display: none !important;
+  }
+
+  /* Hide top toolbar (page select, crop, archive, PDF) */
+  .top-toolbar {
+    display: none !important;
+  }
+
+  /* Expand right viewer full width */
+  .right-viewer-col {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+
