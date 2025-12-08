@@ -6,6 +6,7 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
 import ReactCrop from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import CropModal from "./CropModal";
+import ArchiveCalendar from "./DashboardItems/ArchiveCalendar";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -31,8 +32,21 @@ const PdfImageViewer = () => {
   const [croppedDataUrl, setCroppedDataUrl] = useState(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
+  const [availableDates, setAvailableDates] = useState(new Set());
+
   // pagination controls UI (numbers)
   const totalPages = pageImages.length;
+
+
+   // Fetch list on mount (if user exists)
+  useEffect(() => {
+  if (!allFiles || allFiles.length === 0) {
+    setAvailableDates(new Set());
+    return;
+  }
+  const s = new Set(allFiles.map((f) => f.dateStr).filter(Boolean));
+  setAvailableDates(s);
+}, [allFiles]);
 
   // Fetch list on mount (if user exists)
   useEffect(() => {
@@ -306,39 +320,19 @@ const PdfImageViewer = () => {
                 <i className="bi bi-calendar3 me-1" /> Archive
               </button>
 
-              {calendarOpen && (
-                <div
-                  className="card position-absolute"
-                  style={{ right: 0, top: "42px", zIndex: 1200, minWidth: 240, padding: 10 }}
-                >
-                  <div className="mb-2">
-                    {/* <label className="form-label mb-1">Pick date</label> */}
-                    <input
-                      type="date"
-                      className="form-control form-control-sm"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                    />
-                  </div>
+            {calendarOpen && (
+  <div className="position-absolute" style={{ right: 0, top: "42px", zIndex: 1200 }}>
+    <ArchiveCalendar
+      availableDates={availableDates}
+      value={selectedDate}
+      onSelect={(d) => {
+        setSelectedDate(d || new Date().toISOString().slice(0, 10));
+        setCalendarOpen(false);
+      }}
+    />
+  </div>
+)}
 
-                  <div className="d-flex justify-content-between">
-                    <button
-                      className="btn btn-sm btn-outline-secondary"
-                      onClick={() => {
-                        setSelectedDate(new Date().toISOString().slice(0, 10));
-                      }}
-                    >
-                      Today
-                    </button>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => setCalendarOpen(false)}
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 

@@ -1,0 +1,13 @@
+/* highlight available dates visually */
+.archive-calendar .available {
+  background-color: rgba(13, 110, 253, 0.06);
+  border-color: rgba(13,110,253,0.4);
+  color: #0d6efd;
+}
+
+/* stronger visual when available AND you want filled look for mobile */
+.archive-calendar .available.btn-outline-primary {
+  background-color: #e7f0ff;
+  color: #0d6efd;
+  border-color: #0d6efd;
+}
