@@ -39,6 +39,7 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
+    
     <AuthProvider>
       <BrowserRouter>
       <Navbar />
