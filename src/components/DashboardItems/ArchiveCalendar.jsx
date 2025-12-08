@@ -5,7 +5,7 @@ import './ArchiveCalendar.css'
  * props:
  *  - availableDates: Set of "YYYY-MM-DD" strings that should be highlighted
  *  - value: currently selected date string "YYYY-MM-DD"
- *  - onSelect(dateString) -> called when user picks a date
+ *  - onSelect(dateString) -> called when user picks a date.
  */
 const ArchiveCalendar = ({ availableDates = new Set(), value, onSelect }) => {
   const [shownMonth, setShownMonth] = useState(() => {
