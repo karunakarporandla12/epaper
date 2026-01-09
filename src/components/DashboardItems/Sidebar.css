@@ -57,3 +57,28 @@
 }
 
 
+
+.sidebar-bottom {          /* NEW */
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+  background: #f8f9fc;
+}
+
+.logout-btn {              /* NEW */
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #dc3545;
+  color: #fff;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.logout-btn:hover {
+  background: #c82333;
+}

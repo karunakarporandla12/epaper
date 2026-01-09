@@ -1,4 +1,3 @@
-
 // import React, { useState, useEffect } from 'react';
 // import 'bootstrap/dist/css/bootstrap.min.css';
 // import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -103,7 +102,7 @@
 //             <img src={photoSrc} alt="Profile" className="photo-img" />
 //           ) : (
 //             <div className="photo-fallback" />
-              
+
 //           )}
 //           <img src={Image} alt="Profile" className="photo-img" />
 //         </div>
@@ -112,18 +111,17 @@
 //   );
 // }
 
+import React, { useState, useEffect } from "react";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap-icons/font/bootstrap-icons.css";
 
-import React, { useState, useEffect } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
-import 'bootstrap-icons/font/bootstrap-icons.css';
+import { db, storage } from "../firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { getDownloadURL, ref } from "firebase/storage";
 
-import { db, storage } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { getDownloadURL, ref } from 'firebase/storage';
-
-import './Header.css';
-import Logo from '../assets/logo.jpg';
-import Image from '../assets/image.jpeg';
+import "./Header.css";
+import Logo from "../assets/logo.jpg";
+import Image from "../assets/image.jpeg";
 
 export default function Header() {
   const [config, setConfig] = useState(null);
@@ -138,8 +136,8 @@ export default function Header() {
     async function loadHeader() {
       try {
         // Public Firestore read
-        const snap = await getDoc(doc(db, 'siteConfig', 'header'));
-        if (!snap.exists()) throw new Error('Header config not found');
+        const snap = await getDoc(doc(db, "siteConfig", "header"));
+        if (!snap.exists()) throw new Error("Header config not found");
         const data = snap.data();
 
         // Resolve Storage URLs: supports gs:// and https
@@ -162,27 +160,29 @@ export default function Header() {
         setPhotoSrc(photo || null);
         setErrMsg(null);
       } catch (err) {
-        console.error('Header load error:', err);
+        console.error("Header load error:", err);
         if (!isMounted) return;
 
         // Keep UI functional with safe defaults and local fallbacks
         setConfig({
-          bgColor: '#0A2A67',
-          accentColor: '#F3A11C',
-          bottomBorderColor: '#E6E6E6',
+          bgColor: "#0A2A67",
+          accentColor: "#F3A11C",
+          bottomBorderColor: "#E6E6E6",
           height: 200,
           paddingX: 16,
         });
-        setLogoSrc(null);   // will show local Logo fallback in render
-        setPhotoSrc(null);  // will show local Image fallback in render
-        setErrMsg(err.message || 'Header load failed');
+        setLogoSrc(null); // will show local Logo fallback in render
+        setPhotoSrc(null); // will show local Image fallback in render
+        setErrMsg(err.message || "Header load failed");
       } finally {
         if (isMounted) setLoading(false);
       }
     }
 
     loadHeader();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
@@ -196,9 +196,9 @@ export default function Header() {
     );
   }
 
-  const bgColor = config?.bgColor || '#0A2A67';
-  const accentColor = config?.accentColor || '#F3A11C';
-  const bottomBorderColor = config?.bottomBorderColor || '#E6E6E6';
+  const bgColor = config?.bgColor || "#0A2A67";
+  const accentColor = config?.accentColor || "#F3A11C";
+  const bottomBorderColor = config?.bottomBorderColor || "#E6E6E6";
   const height = config?.height || 200;
   const paddingX = config?.paddingX ?? 16;
 
@@ -221,7 +221,7 @@ export default function Header() {
             <img src={logoSrc} alt="Logo" className="logo-img" />
           ) : (
             <div className="">
-              <img src={Logo} alt="Logo" style={{ height: '120px' }} />
+              <img src={Logo} alt="Logo" style={{ height: "120px" }} />
             </div>
           )}
         </div>
