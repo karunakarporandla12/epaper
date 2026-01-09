@@ -4,6 +4,7 @@ import UserDashboard from './UserDashboard';
 import PublishEdition from '../DashboardItems/PublishEdition';
 import './DashboardLayout.css';
 import ManageEditions from '../DashboardItems/ManageEditions';
+import EpaperSettings from '../DashboardItems/EpaperSettings';
 
 function DashboardLayout() {
   // State to track which page is active
@@ -18,6 +19,8 @@ function DashboardLayout() {
         return <PublishEdition />;
       case 'manage-editions':
         return <ManageEditions />;
+        case 'epaper-setting':
+        return <EpaperSettings />;
       default:
         return <UserDashboard />;
     }

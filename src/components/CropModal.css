@@ -174,3 +174,45 @@
 .twitter { color: #000000; }
 .telegram { color: #0088cc; }
 
+
+/* Branding row layout */
+.branding-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* Left: logo */
+.branding-left {
+  display: flex;
+  align-items: center;
+}
+.publisher-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+.publisher-logo.placeholder {
+  width: 48px;
+  height: 48px;
+  background: #e9ecef;
+  border-radius: 6px;
+}
+
+/* Right: edition name & date */
+.branding-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+.edition-name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.edition-date {
+  color: #6c757d;
+  font-size: 0.9rem;
+}

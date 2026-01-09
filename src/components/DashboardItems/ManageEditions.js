@@ -870,10 +870,10 @@ function ManageEditions() {
                           </div>
 
                           {/* View (eye) button next to ACTION */}
-                         
+
                         </td>
                         <td>
-                           <button
+                          <button
                             className="btn btn-sm btn-outline-primary"
                             title="View edition"
                             onClick={() => viewEdition(edition)}
